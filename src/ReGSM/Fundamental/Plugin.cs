@@ -54,11 +54,11 @@ public interface IPlugin
     bool OnLoad();
     void OnAllLoaded();
     void OnUnload();
-    void QueryRunning();
+    bool QueryRunning();
     void NotifyInterfaceDrop(IShareable @interface);
 }
 
-public abstract class ReGsmPlugin
+public abstract class ReGsmPlugin : IPlugin
 {
     public string Name { get; internal set; } = null!;
     public string Author { get; internal set; } = null!;
@@ -78,17 +78,19 @@ public abstract class ReGsmPlugin
 
     }
 
-    public virtual void QueryRunning()
-    {
+    public virtual bool QueryRunning() => true;
 
+    public virtual void NotifyInterfaceDrop(IShareable @interface)
+    {
+        
     }
 }
 
 internal class PluginInstance
 {
-    private ReGsmPlugin? _instance;
+    public ReGsmPlugin? Instance { get; private set; }
     private PluginLoader? _loader;
-    private readonly IShareSystem _shareSystem;
+    private readonly IShareSystemInternal _shareSystem;
     private readonly string _dllPath;
     private readonly string _dllFile;
     private readonly string _rootPath;
@@ -98,7 +100,9 @@ internal class PluginInstance
 
     public PluginStatus Status { get; private set; }
 
-    public PluginInstance(IShareSystem shareSystem, string rootPath, string dllFile, string dllPath)
+    
+
+    public PluginInstance(IShareSystemInternal shareSystem, string rootPath, string dllFile, string dllPath)
     {
         _shareSystem = shareSystem;
         _rootPath = rootPath;
@@ -108,9 +112,27 @@ internal class PluginInstance
         Status = PluginStatus.Checked;
     }
 
-    public void UpdateStatus(PluginStatus status) => Status = status;
+    public void Query()
+    {
+        try
+        {
 
-    public bool Load()
+            if (!Instance!.QueryRunning())
+            {
+                throw new InvalidOperationException();
+            }
+        }
+        catch (Exception e)
+        {
+            Status = PluginStatus.Failed;
+            if (e is not InvalidOperationException)
+            {
+                Console.WriteLine($"Failed to query plugin \"{Instance!.Name}\": {e.Message}{Environment.NewLine}{e.StackTrace}");
+            }
+        }
+    }
+
+    public bool Init()
     {
         var loader = PluginLoader.CreateFromAssemblyFile(_dllFile, config =>
         {
@@ -138,9 +160,50 @@ internal class PluginInstance
         instance.Url = attr.Url;
         instance.Description = attr.Description;
 
-        _instance = instance;
+        Instance = instance;
         _loader = loader;
 
-        return _instance.OnLoad();
+        return true;
+    }
+
+    public bool Load()
+    {
+        try
+        {
+
+            if (!Instance!.OnLoad())
+            {
+                throw new InvalidOperationException();
+            }
+
+            Status = PluginStatus.Running;
+
+            return true;
+        }
+        catch (Exception e)
+        {
+            Status = PluginStatus.Failed;
+            Console.WriteLine(
+                $"Failed to load plugin {Instance!.Name}: {e.Message}{Environment.NewLine}{e.StackTrace}"
+            );
+            return false;
+        }
+    }
+
+    public void Unload()
+    {
+        if (_loader == null || Instance == null)
+        {
+            return;
+        }
+
+        Instance.OnUnload();
+        Instance = null;
+
+        _loader.Dispose();
+        _loader = null;
+
+        Status = PluginStatus.None;
+
     }
 }
