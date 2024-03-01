@@ -18,16 +18,9 @@ public interface IShareSystem
 
 internal interface IShareSystemInternal : IShareSystem;
 
-internal class ShareSystem : IShareSystemInternal
+internal class ShareSystem(IServiceProvider provider) : IShareSystemInternal
 {
-    public IReGsm ReGsm { get; }
-
-    public ShareSystem(IServiceProvider provider)
-    {
-        Console.WriteLine("ReGSM.ShareSystem: Construct");
-
-        ReGsm = provider.GetRequiredService<IReGsm>();
-    }
+    public IReGsm ReGsm { get; } = provider.GetRequiredService<IReGsm>();
 
     private record ShareableInfo(IShareable Instance, IPlugin Plugin);
 
