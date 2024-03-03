@@ -9,10 +9,10 @@ public interface IShareable
     /// <summary>
     /// 接口名
     /// </summary>
-    string Name { get; }
+    string InterfaceName { get; }
 
     /// <summary>
     /// 接口版本
     /// </summary>
-    uint Version { get; }
+    uint InterfaceVersion { get; }
 }

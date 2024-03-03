@@ -1,4 +1,6 @@
 ﻿using System.Reflection;
+using Microsoft.Extensions.DependencyInjection;
+using ReGSM.System;
 
 namespace ReGSM;
 
@@ -13,11 +15,38 @@ internal interface IReGsmInternal : IReGsm
     void Shutdown();
 }
 
-public class ReGsm : IReGsmInternal
+internal class ReGsm : IReGsmInternal
 {
+    private readonly IServiceProvider _provider;
+    public ReGsm()
+    {
+        var services = new ServiceCollection();
+        ConfigureServices(services);
+        _provider = services.BuildServiceProvider();
+    }
+
+    private void ConfigureServices(IServiceCollection services)
+    {
+        services.AddSingleton<IReGsm, ReGsm>();
+
+        services.AddSingleton<IShareSystemInternal, ShareSystem>();
+        services.AddSingleton<IPluginSystemInternal, PluginSystem>();
+    }
+
+    private void StartupServices()
+    {
+        _provider.GetRequiredService<IShareSystemInternal>();
+        _provider.GetRequiredService<IPluginSystemInternal>();
+    }
+
+
     public bool Init()
     {
-
+        StartupServices();
+        if (!GetPluginSystem().Init())
+        {
+            return false;
+        }
         return true;
     }
 
@@ -36,4 +65,6 @@ public class ReGsm : IReGsmInternal
             return root!.FullName;
         }
     }
+
+    private IPluginSystemInternal GetPluginSystem() => _provider.GetRequiredService<IPluginSystemInternal>();
 }
