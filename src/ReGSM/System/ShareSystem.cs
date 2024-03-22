@@ -1,61 +1,30 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+﻿using ReGSM.Abstractions;
 using ReGSM.Fundamental;
 
 namespace ReGSM.System;
 
-
-
 public interface IShareSystem
 {
-    void AddInterface(IShareable @interface, IPlugin plugin);
+    void AddInterface(ISharable @interface, IPlugin plugin);
 
-    T GetRequiredInterface<T>(uint version) where T : class, IShareable;
+    T GetRequiredInterface<T>(uint version) where T : class, ISharable;
 
-    T? GetInterface<T>(uint version) where T : class, IShareable;
-
-    IReGsm ReGsm { get; }
+    T? GetInterface<T>(uint version) where T : class, ISharable;
 }
 
-internal interface IShareSystemInternal : IShareSystem
+internal interface IShareSystemInternal : IShareSystem, ISystem
 {
-    IEnumerable<IShareable> GetPluginInterfaces(IPlugin plugin);
+    IEnumerable<ISharable> GetPluginInterfaces(IPlugin plugin);
 }
 
-internal abstract class ShareSystemInternal : IShareSystemInternal
+internal class ShareSystem(IServiceProvider provider) : IShareSystemInternal
 {
-    public virtual void AddInterface(IShareable @interface, IPlugin plugin)
-    {
-        throw new NotImplementedException();
-    }
-
-    public virtual T GetRequiredInterface<T>(uint version) where T : class, IShareable
-    {
-        throw new NotImplementedException();
-    }
-
-    public virtual T? GetInterface<T>(uint version) where T : class, IShareable
-    {
-        throw new NotImplementedException();
-    }
-
-    public virtual IReGsm ReGsm => throw new NotImplementedException();
-
-    public virtual IEnumerable<IShareable> GetPluginInterfaces(IPlugin plugin)
-    {
-        throw new NotImplementedException();
-    }
-}
-
-internal class ShareSystem(IServiceProvider provider) : ShareSystemInternal
-{
-    public override IReGsm ReGsm { get; } = provider.GetRequiredService<IReGsm>();
-
-    public override IEnumerable<IShareable> GetPluginInterfaces(IPlugin plugin)
+    public IEnumerable<ISharable> GetPluginInterfaces(IPlugin plugin)
         => _interfaces
             .Where(x => x.Plugin == plugin)
-            .Select(x => x.Instance);
+    .Select(x => x.Instance);
 
-    private record ShareableInfo(IShareable Instance, IPlugin Plugin);
+    private record ShareableInfo(ISharable Instance, IPlugin Plugin);
 
     /// <summary>
     /// 有些插件可以有多个接口, 没必要搞得这么复杂, 一个List完事.
@@ -63,12 +32,11 @@ internal class ShareSystem(IServiceProvider provider) : ShareSystemInternal
     private readonly List<ShareableInfo> _interfaces = [];
 
 
-    public override void AddInterface(IShareable @interface, IPlugin plugin)
+    public void AddInterface(ISharable @interface, IPlugin plugin)
     {
         var name = @interface.InterfaceName;
         var type = @interface.GetType();
         
-        Console.WriteLine($"AddInterface::Type: {typeof(IShareable).IsAssignableFrom(type)}");
         if (_interfaces.Any(x => x.Instance.InterfaceName == name))
         {
             throw new InvalidOperationException($"Interface with name {name} already exists.");
@@ -77,14 +45,13 @@ internal class ShareSystem(IServiceProvider provider) : ShareSystemInternal
         _interfaces.Add(new ShareableInfo(@interface, plugin));
     }
 
-    public override T GetRequiredInterface<T>(uint version)
+    public T GetRequiredInterface<T>(uint version) where T : class, ISharable
     {
-        Console.WriteLine("GetRequiredInterface");
         var @interface =
             _interfaces.SingleOrDefault(x =>
                 x.Instance.GetType().GetInterfaces().Any(t => t == typeof(T))
             ) ??
-            throw new NotImplementedException($"Interface <{nameof(T)}> not found.");
+            throw new NotImplementedException($"Interface <{typeof(T).Name}> not found.");
 
         if (@interface.Instance.InterfaceVersion < version)
         {
@@ -94,11 +61,17 @@ internal class ShareSystem(IServiceProvider provider) : ShareSystemInternal
         return (T)@interface.Instance;
     }
 
-    public override T? GetInterface<T>(uint version) where T: class
-        => (T?) _interfaces
+    public T? GetInterface<T>(uint version) where T : class, ISharable =>
+        (T?) _interfaces
             .SingleOrDefault(x =>
-                x.GetType() == typeof(T) &&
+                x.Instance.GetType() == typeof(T) &&
                 x.Instance.InterfaceVersion >= version
             )?
             .Instance;
+
+    public bool Init() => true;
+
+    public void Shutdown()
+    {
+    }
 }

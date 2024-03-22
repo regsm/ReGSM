@@ -1,10 +1,9 @@
-﻿namespace ReGSM.Fundamental;
-
+﻿namespace ReGSM.Abstractions;
 
 /// <summary>
-/// 所有对外暴露的接口全部继承自这个接口.
+/// 所有接口都必须继承该接口.
 /// </summary>
-public interface IShareable
+public interface ISharable
 {
     /// <summary>
     /// 接口名

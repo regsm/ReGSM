@@ -1,99 +1,101 @@
-﻿using ReGSM.Fundamental;
+﻿using ReGSM.Abstractions;
+using ReGSM.Enums;
+using ReGSM.Fundamental;
 
 namespace ReGSM.System;
 
-internal interface IPluginSystem
+public interface IPluginSystem
 {
-    
+    public uint GetPluginCount();
 }
 
 internal interface IPluginSystemInternal : IPluginSystem, ISystem
 {
-    public void Signal();
+    delegate void DelegatePluginUnload(ReGsmPlugin instance);
+
+    event DelegatePluginUnload PluginUnload;
 }
 
-internal class PluginSystem : IPluginSystemInternal
+internal class PluginSystem(IReGsm reGsm, IShareSystemInternal shareSystem) : IPluginSystemInternal
 {
-    private readonly IReGsm _reGsm;
-    private readonly IShareSystemInternal _shareSystem;
-    public PluginSystem(IShareSystemInternal shareSystem)
-    {
-        _shareSystem = shareSystem;
-        _reGsm = _shareSystem.ReGsm;
-    }
-
     private readonly List<PluginInstance> _instances = [];
 
     public bool Init()
     {
-        LoadPlugins();
+        ScanPlugins();
+        ActivatePlugins();
         return true;
     }
 
     public void Shutdown()
     {
-        UnloadPlugins();
+        DeactivatePlugins();
     }
 
-    public void Signal()
+    public uint GetPluginCount()
     {
-        foreach (var plugin in _instances.Where(x => x.Status == PluginStatus.Running))
-        {
-            plugin.Query();
-        }
+        return 999;
     }
 
-    private void UnloadPlugins()
+    private void ScanPlugins()
     {
-        foreach (var instance in _instances)
+        var pluginsDir = Path.Combine(reGsm.ReGsmPath, "plugins");
+        foreach (var pluginDir in Directory.GetDirectories(pluginsDir))
         {
-            var interfaces = _shareSystem.GetPluginInterfaces(instance.Instance!).ToList();
-
-            if (interfaces.Any())
-            {
-                foreach (var @interface in interfaces)
-                {
-                    foreach (var x in _instances.Where(x => !x.Equals(instance)))
-                    {
-                        x.Instance!.NotifyInterfaceDrop(@interface);
-                    }
-                }
-            }
-
-            instance.Unload();
-        }
-    }
-
-    private void LoadPlugins()
-    {
-        var pluginPath = Path.Combine(Directory.GetParent(_reGsm.ReGsmPath)!.FullName, "plugins");
-        foreach (var directory in Directory.GetDirectories(pluginPath))
-        {
-            var rtConfig = Directory
-                .GetFiles(directory, "*.deps.json")
-                .FirstOrDefault();
-            var entryDll = rtConfig?.Replace(".deps.json", ".dll");
-
+            var entryDll = ProbePluginEntryDll(pluginDir);
             if (string.IsNullOrEmpty(entryDll) || !File.Exists(entryDll))
             {
                 continue;
             }
 
-            var plugin = new PluginInstance(_shareSystem, directory, entryDll, pluginPath);
-            if (!plugin.Init())
-            {
-                // TODO: LogError
-                continue;
-            }
-
-            if (!plugin.Load())
-            {
-                continue;
-            }
-
-            _instances.Add(plugin);
+            _instances.Add(new PluginInstance(
+                shareSystem, 
+                this,
+                entryDll,
+                pluginDir
+                )
+            );
         }
-
-        _instances.ForEach(x => x.Instance!.OnAllLoaded());
     }
+
+    private void ActivatePlugins()
+    {
+        _instances.ForEach(x =>
+        {
+            if (!x.Init())
+            {
+                return;
+            }
+
+            x.Load();
+        });
+        _instances.ForEach(x =>
+        {
+            x.Instance!.OnAllLoaded();
+        });
+    }
+
+    private void DeactivatePlugins()
+    {
+        foreach (var instance in _instances)
+        {
+            instance.Unload();
+        }
+    }
+
+    private string ProbePluginEntryDll(string pluginDir)
+    {
+        // ReSharper disable StringLiteralTypo
+        // ReSharper disable CommentTypo
+        var runtimeConfigFiles = Directory.GetFiles(pluginDir, "*.deps.json");
+        var entryDll = runtimeConfigFiles.Length != 1 // 首先看.deps.json的数量
+            ? Path.Combine(pluginDir, $"{pluginDir}.dll") // 如果没有, 看和文件夹同名的.dll
+            : runtimeConfigFiles[0]
+                .Replace(".deps.json", ".dll"); // 如果超过了1个, 也就是2个或以上, 只看第一个.deps.json及其配套.dll
+        // ReSharper restore CommentTypo
+        // ReSharper restore StringLiteralTypo
+        return entryDll;
+    }
+
+    public event IPluginSystemInternal.DelegatePluginUnload? PluginUnload;
 }

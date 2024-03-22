@@ -1,15 +1,13 @@
-﻿namespace ReGSM;
+namespace ReGSM;
 
-internal class Program
+public class Program
 {
-    private static readonly IReGsmInternal Instance = new ReGsm();
-    static void Main(string[] args)
-    {
-        if (!Instance.Init())
-        {
-            throw new ApplicationException("Startup ReGSM Failed!");
-        }
-        Instance.Shutdown();
-        
-    }
+    public static void Main(string[] args)
+        => Host.CreateDefaultBuilder(args)
+            .ConfigureWebHostDefaults(webBuilder =>
+            {
+                webBuilder.UseStartup<Startup>();
+            })
+            .Build()
+            .Run();
 }
